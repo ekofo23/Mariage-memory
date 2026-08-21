@@ -1,37 +1,40 @@
-FROM php:8.0-apache
+FROM php:8.2-fpm
 
-WORKDIR /var/www/html
-
-# Installation des dépendances système et extensions PHP nécessaires
+# Installation des dépendances système et des extensions PHP nécessaires
 RUN apt-get update && apt-get install -y \
-    git \
-    unzip \
+    build-essential \
     libpng-dev \
     libjpeg62-turbo-dev \
     libfreetype6-dev \
-    libzip-dev \
-    && docker-php-ext-configure gd --with-freetype --with-jpeg \
-    && docker-php-ext-install pdo pdo_mysql gd zip \
-    && rm -rf /var/lib/apt/lists/*
+    locales \
+    zip \
+    jpegoptim optipng pngquant imgsrv \
+    gifsicle \
+    vim \
+    unzip \
+    git \
+    curl \
+    libonig-dev \
+    libzip-dev
 
-COPY . .
+RUN docker-php-ext-install pdo_mysql mbstring zip exif pcntl
+RUN docker-php-ext-configure gd --with-freetype=/usr/include/ --with-jpeg=/usr/include/
+RUN docker-php-ext-install gd
 
 # Installation de Composer
-RUN php -r "copy('https://getcomposer.org/installer', 'composer-setup.php');" \
-    && php composer-setup.php --install-dir=/usr/local/bin --filename=composer \
-    && rm composer-setup.php
+COPY --from=composer:latest /usr/bin/composer /usr/bin/composer
 
-# Installation des dépendances du projet avec contournement des plugins
-ENV COMPOSER_ALLOW_SUPERUSER=1
-RUN composer install --no-dev --optimize-autoloader --no-interaction
+WORKDIR /var/www
 
-RUN chown -R www-data:www-data /var/www/html \
-    && chmod -R 775 storage bootstrap/cache
+COPY . /var/www
 
-RUN a2enmod rewrite
+RUN composer install --no-dev --optimize-autoloader
 
-COPY docker/apache.conf /etc/apache2/sites-available/000-default.conf
+# Création du lien symbolique pour le stockage d'images
+RUN php artisan storage:link
 
-EXPOSE 80
+# Permissions sur les dossiers de stockage et de cache
+RUN chown -R www-data:www-data /var/www/storage /var/www/bootstrap/cache
 
-CMD ["apache2-foreground"]
+EXPOSE 9000
+CMD ["php-fpm"]
